@@ -56,7 +56,7 @@ export const summarizeText = async (req, res) => {
 
 export const summarizeURL = async (req, res) => {
     try {
-        const { url, length = "short", language="en" } = req.body;
+        const { url, length = "short", language="English" } = req.body;
 
         if (!url) return res.status(400).json({success: false, error: "URL is required."});
 
@@ -111,5 +111,18 @@ export const summarizeURL = async (req, res) => {
     } catch (err) {
         console.log(err);
         res.status(500).json({ success: false, error: "Failed to summarize URL." });
+    }
+}
+
+export const summarizePDF = async (req, res) => {
+    try {
+        const file = req.file;
+        if (!file) return res.status(404).json({success: false, error: "File not received."});
+
+        console.log(file);
+        return res.json({success: true, error:"Image received on backend."});
+    } catch (err) {
+        console.log(err);
+        res.status(500).json({success: false, error: "Failed to summarize your PDF file."});
     }
 }
