@@ -114,13 +114,66 @@ export const summarizeURL = async (req, res) => {
     }
 }
 
+import pdfParse from 'pdf-parse';
+import mammoth from 'mammoth';
+
+const extractTextFromPDF = async (buffer) => {
+    const data = await pdfParse(buffer);
+    return data;
+}
+
+const extractTextFromDOCX = async (buffer) => {
+    const data = await mammoth.extractRawText(buffer);
+    return data;
+}
+
 export const summarizePDF = async (req, res) => {
     try {
         const file = req.file;
-        if (!file) return res.status(404).json({success: false, error: "File not received."});
+        if (!file) return res.status(404).json({success: false, error: "You need to enter a PDF or a DOCX file."});
 
-        console.log(file);
-        return res.json({success: true, error:"Image received on backend."});
+        const length = req.body.length || "short";
+        const language = req.body.language || "English";
+
+        let extractedData;
+        if (file.mimetype === 'application/pdf') {
+            extractedData = await extractTextFromPDF(file.buffer).text;
+        } else extractedData = await extractTextFromDOCX(file.buffer).value;
+
+        const prompt = `
+            You are an advanced AI specialized in text analysis and summarization. Your task is to summarize the content of a provided document while preserving key insisghts, structure, and clarity.
+
+            # Instructions:
+            - Extract the **core information** from the document while removing redundant or non-essential content.
+            - Maintain the **logical flow** and readability of the summary.
+            - Use **precise, professional, and neutral language** suitable for reports, research, or general understanding.
+            - **Avoid** summarizing metadata, footnotes, references, or any unnecessary details.
+            - Ensure the summary is **well-structured** with bullet points or sections when appropriate.
+
+            # Length definitions:
+            - **Short:** A compact summary (~50-100 words) focusing only on the key takeaways.
+            - **Medium:** A more detailed summary (~150-250 words) capturing essential insights.
+            - **Long:** A comprehensive summary (~300-450 words) preserving all critical details.
+
+            !! Output the summary in the following JSON format:
+            {
+                "summary": <summary>
+            }
+
+            # Document content to summarize: ${extractedData}
+            # Desired summary length: ${length}
+            # Desired language of the summary: ${language}
+        `
+
+        const result = await model.generateContent(prompt);
+        const summary = JSON.parse(result.response.text().replace(/```json|```/g, '').trim());
+
+        return res.json({
+            success: true,
+            summary: summary.summary,
+            length,
+            summary_length: summary.summary.split(" ").length,
+        });
     } catch (err) {
         console.log(err);
         res.status(500).json({success: false, error: "Failed to summarize your PDF file."});
