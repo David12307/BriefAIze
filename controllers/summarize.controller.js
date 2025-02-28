@@ -17,7 +17,7 @@ const validLanguage = (language) => {
 
 export const summarizeText = async (req, res) => {
     try {
-        const { text, length } = req.body;
+        const { text, length = 'short', bullet_point=false } = req.body;
 
         // Check if all the fields are valid.
         if (!text) res.status(400).json({success:false, error:"Text is required."});
@@ -38,24 +38,24 @@ export const summarizeText = async (req, res) => {
             - Maintain logical flow and ensure the summary is easy to understand.
             - Use professional language while keeping it accessible.
             - Do not add any opinions, extra information, or unrelated details.
-            - Return the summary as a JSON object in the following format:
-            {
-                "summary": "<generated summary>"
-            }
+            ${bullet_point ? "- Return the summary in form of BULLET-POINTS that are in a JSON object of the following format: {summary: [ <all bullet points text> ]}" : "- Return the summary as a JSON object in the following format: { summary: <generated_summary> }"}
 
             # Input text: " ${text} "
-            # Desired summary length: ${length || 'short'}
+            # Desired summary length: ${length}
         `;
 
         const result = await model.generateContent(prompt);
         const summary = JSON.parse(result.response.text().replace(/```json|```/g, '').trim());
-        res.json({
+
+        const returnObject = {
             success: true,
             summary: summary.summary,
             original_text: text,
             original_length: text.split(" ").length,
-            summary_length: summary.summary.split(" ").length,
-        });
+            length,
+            summary_length: bullet_point ? summary.summary.length : summary.summary.split(" ").length,
+        }
+        res.json(returnObject);
     } catch (err) {
         console.log(err);
         res.status(500).json({ success: false, error: "Failed to summarize text. Try again later!" });
@@ -138,7 +138,7 @@ const extractDataFromDOCX = async (buffer) => {
     return data;
 }
 
-export const summarizePDF = async (req, res) => {
+export const summarizeFile = async (req, res) => {
     try {
         const file = req.file;
         if (!file) return res.status(404).json({success: false, error: "You need to enter a PDF or a DOCX file."});
