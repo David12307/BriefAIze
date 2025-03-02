@@ -1,4 +1,4 @@
-import { GEMINI_API_KEY } from '../config/env.js';
+import { GEMINI_API_KEY, UPSTASH_REDIS_REST_TOKEN, UPSTASH_REDIS_REST_URL } from '../config/env.js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
@@ -8,6 +8,8 @@ import axios from 'axios';
 // Import JSDOM
 import { JSDOM } from 'jsdom';
 import { Readability } from '@mozilla/readability';
+
+import crypto from 'crypto';
 
 const languages = ["english", "romanian", "spanish", "french", "german", "greek", "italian", "portugese"];
 const validLanguage = (language) => {
@@ -63,6 +65,7 @@ export const summarizeText = async (req, res) => {
             ${summaryStyles[summary_style].join("\n")}
 
             ${bullet_point ? "- Return the summary in form of BULLET-POINTS that are in a JSON object of the following format: {summary: [ <all bullet points text> ]}" : "- Return the summary as a JSON object in the following format: { summary: <generated_summary> }"}
+            !! Also make sure to add the topic of the summary in that JSON object ({topic: <topic>})
 
             # Input text: " ${text} "
             # Desired summary length: ${length}
@@ -80,6 +83,7 @@ export const summarizeText = async (req, res) => {
             length,
             summary_style,
             language,
+            summary_topic: summary.topic,
             summary_length: bullet_point ? summary.summary.length : summary.summary.split(" ").length,
         }
         res.json(returnObject);
@@ -128,6 +132,7 @@ export const summarizeURL = async (req, res) => {
             ${summaryStyles[summary_style].join("\n")}
 
             ${bullet_point ? "- Return the summary in form of BULLET-POINTS that are in a JSON object of the following format: {summary: [ <all bullet points text> ]}" : "- Return the summary as a JSON object in the following format: { summary: <generated_summary> }"}
+            !! Also make sure to add the topic of the summary in that JSON object ({topic: <topic>})
 
             ## Content to summarize:
             ${extractedText}
@@ -144,6 +149,7 @@ export const summarizeURL = async (req, res) => {
             summary: summary.summary,
             language,
             length,
+            summary_topic: summary.topic,
             summary_style,
             summary_length: bullet_point ? summary.summary.length : summary.summary.split(" ").length,
         });
@@ -155,6 +161,7 @@ export const summarizeURL = async (req, res) => {
 
 import pdfParse from 'pdf-parse';
 import mammoth from 'mammoth';
+import { Redis } from '@upstash/redis';
 
 const extractDataFromPDF = async (buffer) => {
     const data = await pdfParse(buffer);
@@ -166,11 +173,24 @@ const extractDataFromDOCX = async (buffer) => {
     return data;
 }
 
+const hashString = (input) => {
+    return crypto.createHash('sha256').update(input).digest('hex');
+}
+
+const createCacheKey = (fileHash, optionsHash) => {
+    return `${fileHash}-${optionsHash}`;
+}
+
+const redis = new Redis({
+    url: UPSTASH_REDIS_REST_URL,
+    token: UPSTASH_REDIS_REST_TOKEN
+});
+
 export const summarizeFile = async (req, res) => {
     try {
         const file = req.file;
         if (!file) return res.status(404).json({success: false, error: "You need to enter a PDF or a DOCX file."});
-
+        
         // Check if all the fields are valid.
         const length = req.body.length || "short";
         const language = req.body.language || "english";
@@ -206,23 +226,35 @@ export const summarizeFile = async (req, res) => {
             - **Medium:** A more detailed summary (~150-250 words) capturing essential insights.
             - **Long:** A comprehensive summary (~300-450 words) preserving all critical details.
 
-            !! ${bullet_point ? "Return the summary in form of BULLET-POINTS that are in a JSON object of the following format: {summary: [ <all bullet points text> ]}" : "Return the summary as a JSON object in the following format: { summary: <generated_summary> }"}
+            ${bullet_point ? "Return the summary in form of BULLET-POINTS that are in a JSON object of the following format: {summary: [ <all bullet points text> ]}" : "Return the summary as a JSON object in the following format: { summary: <generated_summary> }"}
+            !! Also make sure to add the topic of the summary in that JSON object ({topic: <topic>})
 
             # Document content to summarize: ${extractedData}
             # Desired summary length: ${length}
             # Desired language of the summary: ${language}
-        `
+        `;
 
-        const result = await model.generateContent(prompt);
-        const summary = JSON.parse(result.response.text().replace(/```json|```/g, '').trim());
+        const cacheKey = createCacheKey( hashString(file.buffer), hashString(`${length}-${language}-${summary_style}-${bullet_point}`) );
+        const cachedObj = await redis.get(cacheKey);
+
+        let result;
+        let summaryObj;
+        if (!cachedObj) {
+            result = await model.generateContent(prompt);
+            summaryObj = JSON.parse(result.response.text().replace(/```json|```/g, '').trim());
+        }
+        const summary = cachedObj ? cachedObj : summaryObj.summary;
+
+        await redis.set(cacheKey, summary);
 
         return res.json({
             success: true,
-            summary: summary.summary,
+            summary,
             length,
             language,
             summary_style,
-            summary_length: bullet_point ? summary.summary.length : summary.summary.split(" ").length,
+            summary_topic: summaryObj ? summaryObj.topic : "Undefined yet.",
+            summary_length: bullet_point ? summary.length : summary.split(" ").length,
         });
     } catch (err) {
         console.log(err);
