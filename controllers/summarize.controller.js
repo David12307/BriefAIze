@@ -234,6 +234,8 @@ export const summarizeFile = async (req, res) => {
             # Desired language of the summary: ${language}
         `;
 
+        // THIS (CACHING SYSTEM) STILL NEEDS ADJUSTMENTS!!!!!
+
         const cacheKey = createCacheKey( hashString(file.buffer), hashString(`${length}-${language}-${summary_style}-${bullet_point}`) );
         const cachedObj = await redis.get(cacheKey);
 
