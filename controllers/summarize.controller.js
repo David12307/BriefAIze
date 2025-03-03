@@ -10,6 +10,12 @@ import { JSDOM } from 'jsdom';
 import { Readability } from '@mozilla/readability';
 
 import crypto from 'crypto';
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+    url: UPSTASH_REDIS_REST_URL,
+    token: UPSTASH_REDIS_REST_TOKEN
+});
 
 const languages = ["english", "romanian", "spanish", "french", "german", "greek", "italian", "portugese"];
 const validLanguage = (language) => {
@@ -38,6 +44,22 @@ const summaryStyles = {
         "- Focus on key themes and emotions, not just facts.",
         "- Allow for metaphors, analogies, or storytelling elements where relevant.",
     ]
+}
+
+const cacheSummary = async (key, summary, ttlInSeconds=3600) => {
+    await redis.set(key, summary, { ex: ttlInSeconds });
+}
+
+const getCachedSummary = async (key) => {
+    return await redis.get(key);
+}
+
+const hashString = (input) => {
+    return crypto.createHash('sha256').update(input).digest('hex');
+}
+
+const createCacheKey = (length, language, bullet_point, summary_style, text) => {
+    return `${length}-${language}-${summary_style}-${bullet_point}-${text}`;
 }
 
 export const summarizeText = async (req, res) => {
@@ -72,8 +94,25 @@ export const summarizeText = async (req, res) => {
             # Desired language of the summary: ${language}
         `;
 
-        const result = await model.generateContent(prompt);
-        const summary = JSON.parse(result.response.text().replace(/```json|```/g, '').trim());
+        // LOGIC FOR CACHING
+        const cacheKey = createCacheKey(length, language, bullet_point, summary_style, text);
+        const cachedObj = await getCachedSummary(cacheKey);
+        let result, summary;
+        if (!cachedObj) {
+            result = await model.generateContent(prompt);
+            try {
+                summary = JSON.parse(result.response.text().replace(/```json|```/g, '').trim());
+
+                // Cache result with an expiry of 24 hours
+                await cacheSummary(cacheKey, JSON.stringify(summary), 86400);
+            } catch (err) {
+                console.error("Error parsing AI response: ", err);
+                return res.status(500).json({success: false, error: "Failed to process summary."});
+            }
+        } else {
+            console.log("Found cache.");
+            summary = cachedObj;
+        }
 
         const returnObject = {
             success: true,
@@ -161,7 +200,6 @@ export const summarizeURL = async (req, res) => {
 
 import pdfParse from 'pdf-parse';
 import mammoth from 'mammoth';
-import { Redis } from '@upstash/redis';
 
 const extractDataFromPDF = async (buffer) => {
     const data = await pdfParse(buffer);
@@ -172,19 +210,6 @@ const extractDataFromDOCX = async (buffer) => {
     const data = await mammoth.extractRawText(buffer);
     return data;
 }
-
-const hashString = (input) => {
-    return crypto.createHash('sha256').update(input).digest('hex');
-}
-
-const createCacheKey = (fileHash, optionsHash) => {
-    return `${fileHash}-${optionsHash}`;
-}
-
-const redis = new Redis({
-    url: UPSTASH_REDIS_REST_URL,
-    token: UPSTASH_REDIS_REST_TOKEN
-});
 
 export const summarizeFile = async (req, res) => {
     try {
