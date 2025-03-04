@@ -73,7 +73,7 @@ const getSummary = async (prompt, optionsObj) => {
             summary = JSON.parse(result.response.text().replace(/```json|```/g, '').trim());
 
             // Cache result for 24 hours
-            await cacheSummary(cacheKey, JSON.stringify(summary), 86200);
+            await cacheSummary(cacheKey, JSON.stringify(summary), 60);
             return summary;
         } catch (err) {
             console.error("Error parsing AI response", err);
@@ -253,12 +253,13 @@ export const summarizeFile = async (req, res) => {
         // Check if all the fields are valid.
         const length = req.body.length || "short";
         const language = req.body.language || "english";
-        const bullet_point = req.body.bullet_point || false;
+        const bullet_point = req.body.bullet_point || 'false';
         const summary_style = req.body.summary_style || "professional";
         if (!["short", "medium", "long"].includes(length)) return res.status(400).json({success: false, error: "Invalid summary length."});
         if (!validLanguage(language)) return res.status(400).json({success: false, error: "Invalid language."});
         if (!summaryStyles[summary_style]) return res.status(400).json({success: false, error: "Invalid summary style."});
-        
+        if (!["true", "false"].includes(bullet_point)) return res.status(400).json({success: false, error: "Invalid bullet_point value."});
+
         let extractedData;
         if (file.mimetype === 'application/pdf') {
             extractedData = await extractDataFromPDF(file.buffer);
@@ -277,7 +278,6 @@ export const summarizeFile = async (req, res) => {
             - Extract the **core information** from the document while removing redundant or non-essential content.
             - Maintain the **logical flow** and readability of the summary.
             - **Avoid** summarizing metadata, footnotes, references, or any unnecessary details.
-            - Ensure the summary is **well-structured**.
             ${summaryStyles[summary_style].join("\n")}
 
             # Length definitions:
@@ -285,12 +285,12 @@ export const summarizeFile = async (req, res) => {
             - **Medium:** A more detailed summary (~150-250 words) capturing essential insights.
             - **Long:** A comprehensive summary (~300-450 words) preserving all critical details.
 
-            ${bullet_point ? "- Return the summary in form of BULLET-POINTS that are in a JSON object of the following format: {summary: [ <all bullet points text> ]}" : "- Return the summary as a JSON object in the following format: { summary: <generated_summary> }"}
+            ${bullet_point === 'true' ? "- Return the summary in form of BULLET-POINTS that are in a JSON object of the following format: {summary: [ <all bullet points text> ]}" : "- Return the summary as a JSON object in the following format: { summary: <generated_summary> }"}
             !! Also make sure to add the topic of the summary in that JSON object ({topic: <topic>})
 
             # Document content to summarize: ${extractedData}
             # Desired summary length: ${length}
-            # Desired language of the summary: ${language}
+            # !! Desired language of the summary: ${language}
         `;
 
         const summary = await getSummary(prompt, { originalInput: file.buffer, language, length, bullet_point, summary_style });
@@ -308,13 +308,12 @@ export const summarizeFile = async (req, res) => {
                 language,
             }
         */
-
         return res.json({
             success: true,
             summary: summary.summary,
             summary_topic: summary.topic,
             desired_length: length,
-            summary_Length: bullet_point ? summary.summary.length : summary.summary.split(" ").length,
+            summary_Length: bullet_point === 'true' ? summary.summary.length : summary.summary.split(" ").length,
             summary_style,
             language,
         });
