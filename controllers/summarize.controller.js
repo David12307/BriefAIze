@@ -46,10 +46,6 @@ const summaryStyles = {
     ]
 }
 
-const cacheSummary = async (key, summary, ttlInSeconds=3600) => {
-    await redis.set(key, summary, { ex: ttlInSeconds });
-}
-
 const getCachedSummary = async (key) => {
     return await redis.get(key);
 }
@@ -58,8 +54,35 @@ const hashString = (input) => {
     return crypto.createHash('sha256').update(input).digest('hex');
 }
 
-const createCacheKey = (length, language, bullet_point, summary_style, text) => {
-    return `${length}-${language}-${summary_style}-${bullet_point}-${text}`;
+const cacheSummary = async (key, summary, ttlInSeconds=3600) => {
+    await redis.set(key, summary, { ex: ttlInSeconds });
+}
+
+const createCacheKey = (length, language, bullet_point, summary_style, originalInput) => {
+    return hashString(`${length}-${language}-${summary_style}-${bullet_point}-${originalInput}`);
+}
+
+const getSummary = async (prompt, optionsObj) => {
+    const { length, language, bullet_point, summary_style, originalInput } = optionsObj;
+    const cacheKey = createCacheKey(length, language, bullet_point, summary_style, originalInput);
+    const cachedObj = await getCachedSummary(cacheKey);
+    let result, summary;
+    if (!cachedObj) {
+        result = await model.generateContent(prompt);
+        try {
+            summary = JSON.parse(result.response.text().replace(/```json|```/g, '').trim());
+
+            // Cache result for 24 hours
+            await cacheSummary(cacheKey, JSON.stringify(summary), 86200);
+            return summary;
+        } catch (err) {
+            console.error("Error parsing AI response", err);
+            return false;
+        }
+    } else {
+        console.log("Found cache.");
+        return cachedObj;
+    }
 }
 
 export const summarizeText = async (req, res) => {
@@ -94,38 +117,34 @@ export const summarizeText = async (req, res) => {
             # Desired language of the summary: ${language}
         `;
 
-        // LOGIC FOR CACHING
-        const cacheKey = createCacheKey(length, language, bullet_point, summary_style, text);
-        const cachedObj = await getCachedSummary(cacheKey);
-        let result, summary;
-        if (!cachedObj) {
-            result = await model.generateContent(prompt);
-            try {
-                summary = JSON.parse(result.response.text().replace(/```json|```/g, '').trim());
+        const summary = await getSummary(prompt, { text, language, length, bullet_point, summary_style })
 
-                // Cache result with an expiry of 24 hours
-                await cacheSummary(cacheKey, JSON.stringify(summary), 86400);
-            } catch (err) {
-                console.error("Error parsing AI response: ", err);
-                return res.status(500).json({success: false, error: "Failed to process summary."});
+        /*
+            Return the following object
+            
+            {
+                success: true,
+                original_text: text,
+                original_length: text.split(" ").length,
+                summary: summary.summary,
+                summary_topic: summary.topic,
+                desired_length: length,
+                summary_Length: bullet_point ? summary.summary.length : summary.summary.split(" ").length,
+                summary_style,
+                language,
             }
-        } else {
-            console.log("Found cache.");
-            summary = cachedObj;
-        }
-
-        const returnObject = {
+        */
+        res.json({
             success: true,
-            summary: summary.summary,
             original_text: text,
             original_length: text.split(" ").length,
-            length,
+            summary: summary.summary,
+            summary_topic: summary.topic,
+            desired_length: length,
+            summary_Length: bullet_point ? summary.summary.length : summary.summary.split(" ").length,
             summary_style,
             language,
-            summary_topic: summary.topic,
-            summary_length: bullet_point ? summary.summary.length : summary.summary.split(" ").length,
-        }
-        res.json(returnObject);
+        });
     } catch (err) {
         console.log(err);
         res.status(500).json({ success: false, error: "Failed to summarize text. Try again later!" });
@@ -181,16 +200,31 @@ export const summarizeURL = async (req, res) => {
             ## Desired summary length: ${length}
         `;
 
-        const result = await model.generateContent(prompt);
-        const summary = JSON.parse(result.response.text().replace(/```json|```/g, '').trim());
+        const summary = await getSummary(prompt, { originalInput: url, language, length, bullet_point, summary_style });
+
+        /*
+            Return the following object
+            
+            {
+                success: true,
+                pageToSummarize: url,
+                summary: summary.summary,
+                summary_topic: summary.topic,
+                desired_length: length,
+                summary_Length: bullet_point ? summary.summary.length : summary.summary.split(" ").length,
+                summary_style,
+                language,
+            }
+        */
         res.json({
             success: true,
+            pageToSummarize: url,
             summary: summary.summary,
-            language,
-            length,
             summary_topic: summary.topic,
+            desired_length: length,
+            summary_Length: bullet_point ? summary.summary.length : summary.summary.split(" ").length,
             summary_style,
-            summary_length: bullet_point ? summary.summary.length : summary.summary.split(" ").length,
+            language,
         });
     } catch (err) {
         console.log(err);
@@ -251,7 +285,7 @@ export const summarizeFile = async (req, res) => {
             - **Medium:** A more detailed summary (~150-250 words) capturing essential insights.
             - **Long:** A comprehensive summary (~300-450 words) preserving all critical details.
 
-            ${bullet_point ? "Return the summary in form of BULLET-POINTS that are in a JSON object of the following format: {summary: [ <all bullet points text> ]}" : "Return the summary as a JSON object in the following format: { summary: <generated_summary> }"}
+            ${bullet_point ? "- Return the summary in form of BULLET-POINTS that are in a JSON object of the following format: {summary: [ <all bullet points text> ]}" : "- Return the summary as a JSON object in the following format: { summary: <generated_summary> }"}
             !! Also make sure to add the topic of the summary in that JSON object ({topic: <topic>})
 
             # Document content to summarize: ${extractedData}
@@ -259,27 +293,30 @@ export const summarizeFile = async (req, res) => {
             # Desired language of the summary: ${language}
         `;
 
-        const cacheKey = createCacheKey( hashString(file.buffer), hashString(`${length}-${language}-${summary_style}-${bullet_point}`) );
-        const cachedObj = await redis.get(cacheKey);
+        const summary = await getSummary(prompt, { originalInput: file.buffer, language, length, bullet_point, summary_style });
 
-        let result;
-        let summaryObj;
-        if (!cachedObj) {
-            result = await model.generateContent(prompt);
-            summaryObj = JSON.parse(result.response.text().replace(/```json|```/g, '').trim());
-        }
-        const summary = cachedObj ? cachedObj : summaryObj.summary;
-
-        await redis.set(cacheKey, summary);
+        /*
+            Return the following object
+            
+            {
+                success: true,
+                summary: summary.summary,
+                summary_topic: summary.topic,
+                desired_length: length,
+                summary_Length: bullet_point ? summary.summary.length : summary.summary.split(" ").length,
+                summary_style,
+                language,
+            }
+        */
 
         return res.json({
             success: true,
-            summary,
-            length,
-            language,
+            summary: summary.summary,
+            summary_topic: summary.topic,
+            desired_length: length,
+            summary_Length: bullet_point ? summary.summary.length : summary.summary.split(" ").length,
             summary_style,
-            summary_topic: summaryObj ? summaryObj.topic : "Undefined yet.",
-            summary_length: bullet_point ? summary.length : summary.split(" ").length,
+            language,
         });
     } catch (err) {
         console.log(err);
