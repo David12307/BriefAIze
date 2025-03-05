@@ -118,6 +118,7 @@ export const summarizeText = async (req, res) => {
         `;
 
         const summary = await getSummary(prompt, { text, language, length, bullet_point, summary_style })
+        if (!summary) res.status(500).json({ success: false, error: "Failed to summarize text. Try again later!" });
 
         /*
             Return the following object
@@ -201,6 +202,7 @@ export const summarizeURL = async (req, res) => {
         `;
 
         const summary = await getSummary(prompt, { originalInput: url, language, length, bullet_point, summary_style });
+        if (!summary) res.status(500).json({ success: false, error: "Failed to summarize URL. Try again later!" });
 
         /*
             Return the following object
@@ -258,6 +260,7 @@ export const summarizeFile = async (req, res) => {
         if (!["short", "medium", "long"].includes(length)) return res.status(400).json({success: false, error: "Invalid summary length."});
         if (!validLanguage(language)) return res.status(400).json({success: false, error: "Invalid language."});
         if (!summaryStyles[summary_style]) return res.status(400).json({success: false, error: "Invalid summary style."});
+        // The bullet point comes as a string because of the form so we need to check if it's either false or true
         if (!["true", "false"].includes(bullet_point)) return res.status(400).json({success: false, error: "Invalid bullet_point value."});
 
         let extractedData;
@@ -292,8 +295,8 @@ export const summarizeFile = async (req, res) => {
             # Desired summary length: ${length}
             # !! Desired language of the summary: ${language}
         `;
-
         const summary = await getSummary(prompt, { originalInput: file.buffer, language, length, bullet_point, summary_style });
+        if (!summary) res.status(500).json({ success: false, error: "Failed to summarize file. Try again later!" });
 
         /*
             Return the following object
