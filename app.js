@@ -3,6 +3,7 @@ import cookieParser from 'cookie-parser';
 import summarizeRouter from './routes/summarize.routes.js';
 import { PORT } from './config/env.js';
 import arcjetMiddleware from './middleware/arcjet.middleware.js';
+import authRouter from './routes/auth.routes.js';
 
 var app = express();
 
@@ -16,6 +17,7 @@ app.get("/", (req, res) => {
 });
 
 app.use("/api/v1/summarize", summarizeRouter);
+app.use("/api/v1/auth", authRouter);
 
 app.listen(PORT, () => {
     console.log(`App is running at http://localhost:${PORT}/`);
