@@ -27,5 +27,6 @@ export const generateApiKey = async (req, res) => {
         .insert([{ user_id: userId, key: apiKey }])
 
     if (error) throw error;
+    console.log(data);
     res.send(apiKey);
 }
