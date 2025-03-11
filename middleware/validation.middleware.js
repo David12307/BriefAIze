@@ -79,6 +79,19 @@ const checkAndResetUsage = async (apiKey) => {
     return { requests_made };
 }
 
+import pdfParse from 'pdf-parse';
+import mammoth from 'mammoth';
+
+const extractDataFromPDF = async (buffer) => {
+    const data = await pdfParse(buffer);
+    return data;
+}
+
+const extractDataFromDOCX = async (buffer) => {
+    const data = await mammoth.extractRawText(buffer);
+    return data;
+}
+
 export const validateAPIKey = async (req, res, next) => {
     const apiKey = req.headers['x-api-key'];
     if (!apiKey) return res.status(401).json({ error: "API Key required." });
@@ -86,16 +99,36 @@ export const validateAPIKey = async (req, res, next) => {
     const apiData = await getApiData(apiKey);
     if (!apiData) return res.status(403).json({error: "Invalid API key."});
 
+    const isWithinLimit = (usage, limit) => usage <= planLimits[apiData.pricing_plan][limit];
+
     // Check requests made and make sure it stays in it's specific limit
     const { requests_made, error } = await checkAndResetUsage(apiKey);
     if (error) return res.status(403).json({error});
     
-    if (requests_made >= planLimits[apiData.pricing_plan].maxRequests)
+    if (!isWithinLimit(requests_made, "maxRequests"))
         return res.status(429).json({error: "Request limit exceeded."});
 
     // Increment requests_made field
     const { error: updateError } = await updateRequestsCounter(apiKey);
-    if (updateError) return res.status(401).json({error: "Something went wrong... try again later."});
+    if (updateError) {
+        console.error("Failed to update request counter: ", updateError);
+        return res.status(500).json({error: "Internal serve error."});
+    }
+
+    // Specific restrictions for file uploads
+    if (req.path == '/file') {
+        const file = req.file;
+        let extractedData;
+        if (file.mimetype === 'application/pdf') {
+            extractedData = await extractDataFromPDF(file.buffer);
+            if (!isWithinLimit(extractedData.numpages, "maxPages")) return res.status(429).json({success: false, error: "File exceeds plan limits."});
+            req.extractedData = extractedData.text;
+        } else {
+            extractedData = await extractDataFromDOCX(file.buffer);
+            if (!isWithinLimit(extractedData.value.length, "maxChars")) return res.status(429).json({success: false, error: "File exceeds plan limits."});
+            req.extractedData = extractedData.value;
+        }
+    }
 
     next();
 }

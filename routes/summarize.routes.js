@@ -7,6 +7,6 @@ const summarizeRouter = Router();
 
 summarizeRouter.post("/text", validateAPIKey, summarizeText);
 summarizeRouter.post('/url', validateAPIKey, summarizeURL);
-summarizeRouter.post("/file", upload.single('pdfFile'), summarizeFile);
+summarizeRouter.post("/file", upload.single('pdfFile'), validateAPIKey, summarizeFile);
 
 export default summarizeRouter;

@@ -234,19 +234,6 @@ export const summarizeURL = async (req, res) => {
     }
 }
 
-import pdfParse from 'pdf-parse';
-import mammoth from 'mammoth';
-
-const extractDataFromPDF = async (buffer) => {
-    const data = await pdfParse(buffer);
-    return data;
-}
-
-const extractDataFromDOCX = async (buffer) => {
-    const data = await mammoth.extractRawText(buffer);
-    return data;
-}
-
 export const summarizeFile = async (req, res) => {
     try {
         const file = req.file;
@@ -263,16 +250,7 @@ export const summarizeFile = async (req, res) => {
         // The bullet point comes as a string because of the form so we need to check if it's either false or true
         if (!["true", "false"].includes(bullet_point)) return res.status(400).json({success: false, error: "Invalid bullet_point value."});
 
-        let extractedData;
-        if (file.mimetype === 'application/pdf') {
-            extractedData = await extractDataFromPDF(file.buffer);
-            if (extractedData.numpages > 50) return res.status(400).json({success: false, error: "PDF files with more than 50 pages are not supported."});
-            extractedData = extractedData.text;
-        } else {
-            extractedData = await extractDataFromDOCX(file.buffer);
-            if (extractedData.value.length > 125000) return res.status(400).json({success: false, error: "DOCX files with more than 125,000 characters are not supported."});
-            extractedData = extractedData.value;
-        }
+        let extractedData = req.extractedData;
 
         const prompt = `
             You are an advanced AI specialized in text analysis and summarization. Your task is to summarize the content of a provided document while preserving key insisghts, structure, and clarity.
