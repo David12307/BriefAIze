@@ -29,24 +29,29 @@ To use this API, include your API in the `x-api-key` header.
 ⬇️ /summarize/text
 ```
 {
-    "text": "",
-    "length": "short",
-    "bullet_point": true,
-    "summary_style": "casual",
-    "language": "spanish"        
+    text,
+    length,
+    bullet_point,
+    summary_style,
+    language        
 }
 ```
 
 ⬇️ /summarize/url
 ```
 {
-  "url": "",
-  "language": "english",
-  "bullet_point": false,
-  "length": "short",
-  "summary_style": "professional"
+  url,
+  language,
+  bullet_point,
+  length,
+  summary_style
 }
 ```
 
 ⬇️ /summarize/file
-In form of a form
+(Multipart form-data with):
+* file (PDF or DOCX)
+* length
+* bullet_point
+* summary_style
+* language
