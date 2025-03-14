@@ -55,3 +55,14 @@ To use this API, include your API in the `x-api-key` header.
 * bullet_point
 * summary_style
 * language
+
+### 🛠️ Environment Variables
+```
+PORT,
+GEMINI_API_KEY,
+ARCJET_KEY,
+UPSTASH_REDIS_REST_URL,
+UPSTASH_REDIS_REST_TOKEN
+SUPABASE_URL
+SUPABASE_KEY
+```
