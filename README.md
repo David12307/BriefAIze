@@ -68,4 +68,4 @@ SUPABASE_KEY
 ```
 
 ## 🎥 Demo
-[![Watch the Demo]]((https://youtu.be/psfq_hqQ-yY))
+[![Watch the Demo]](https://youtu.be/psfq_hqQ-yY)
