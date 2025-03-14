@@ -3,18 +3,18 @@ import crypto from 'crypto';
 
 export const signUp = async (req, res) => {
     const { password, email } = req.body;
-    const { user, error } = await supabase.auth.signUp({ email, password });
+    const { data, error } = await supabase.auth.signUp({ email, password });
 
     if (error) throw error;
-    res.send(user);
+    res.json({ success: true, id: data.user.id });
 }
 
 export const signIn = async (req, res) => {
     const { password, email } = req.body;
 
-    const { user, error } = await supabase.auth.signInWithPassword({email, password});
+    const { data, error } = await supabase.auth.signInWithPassword({email, password});
     if (error) throw error;
-    res.send(user);
+    res.json({ id: data.user.id });
 }
 
 export const generateApiKey = async (req, res) => {
@@ -22,11 +22,18 @@ export const generateApiKey = async (req, res) => {
 
     const { userId } = req.body;
 
+    const { data: userData, error: userError } = await supabase
+        .from("api_keys")
+        .select("*")
+        .eq("user_id", userId)
+    
+    if (userError) throw userError;
+    if (userData.length !== 0) return res.json({ success: false, key: userData[0].key });
+
     const { data, error } = await supabase
         .from("api_keys")
         .insert([{ user_id: userId, key: apiKey }])
 
     if (error) throw error;
-    console.log(data);
-    res.send(apiKey);
+    res.json({ key: apiKey });
 }
