@@ -66,3 +66,6 @@ UPSTASH_REDIS_REST_TOKEN
 SUPABASE_URL
 SUPABASE_KEY
 ```
+
+## 🎥 Demo
+[![Watch the Demo]]((https://youtu.be/psfq_hqQ-yY))
