@@ -10,6 +10,19 @@ A production-ready API designed for learning purposes, showcasing authentication
 
 ## 🚀 API Documentation
 
+### 🛠 Request Options
+
+| **Parameter**    | **Description**                              | **Possible Values**                      |
+|-----------------|------------------------------------------|------------------------------------------|
+| `text`          | Input text to be summarized             | Any string                              |
+| `url`           | URL of a webpage to summarize          | Any valid URL                           |
+| `file`          | File for summarization (PDF/DOCX)      | Multipart form-data file                |
+| `length`        | Determines the length of the summary   | `short`, `medium`, `long`               |
+| `bullet_point`  | Formats the summary as bullet points   | `true`, `false`                         |
+| `summary_style` | Controls the tone of the summary       | `casual`, `professional`, `formal`      |
+| `language`      | Specifies the language of the summary  | Language codes (e.g., `en`, `es`, `fr`) |
+
+
 ### 🔑 Authentication
 To use this API, include your API in the `x-api-key` header.
 
